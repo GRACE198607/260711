@@ -437,7 +437,8 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
   color: var(--ink-soft);
 }
 .field input[type="date"],
-.field input[type="time"] {
+.field input[type="time"],
+.field select {
   font-family: inherit;
   font-size: 14px;
   padding: 8px 10px;
@@ -531,7 +532,7 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
   <div class="saju-section">
     <div class="saju-head">
       <h2>사주로 번호 추천받기</h2>
-      <p>생년월일과 태어난 시간을 입력하면 AI가 사주를 풀이해 번호를 추천합니다</p>
+      <p>생년월일, 태어난 시간, 성별을 입력하면 AI가 사주를 풀이해 번호 7개(보너스 포함)를 추천합니다</p>
     </div>
 
     <form class="saju-form" id="sajuForm">
@@ -543,6 +544,14 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
         <div class="field">
           <label for="birthTime">태어난 시간</label>
           <input type="time" id="birthTime" />
+        </div>
+        <div class="field">
+          <label for="gender">성별</label>
+          <select id="gender">
+            <option value="">선택 안 함</option>
+            <option value="여성">여성</option>
+            <option value="남성">남성</option>
+          </select>
         </div>
       </div>
       <label class="unknown-time">
@@ -556,6 +565,9 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
     <div class="saju-result" id="sajuResult" style="display:none;">
       <p class="saju-analysis" id="sajuAnalysis"></p>
       <div class="main-row ai-row" id="sajuBallRow"></div>
+      <div class="bonus-row" id="sajuBonusRow">
+        <span class="bonus-label" id="sajuBonusLabel">보너스</span>
+      </div>
     </div>
   </div>
 </div>
@@ -718,12 +730,15 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
   const sajuForm = document.getElementById('sajuForm');
   const birthDateEl = document.getElementById('birthDate');
   const birthTimeEl = document.getElementById('birthTime');
+  const genderEl = document.getElementById('gender');
   const unknownTimeEl = document.getElementById('unknownTime');
   const sajuBtn = document.getElementById('sajuBtn');
   const sajuHint = document.getElementById('sajuHint');
   const sajuResult = document.getElementById('sajuResult');
   const sajuAnalysisEl = document.getElementById('sajuAnalysis');
   const sajuBallRow = document.getElementById('sajuBallRow');
+  const sajuBonusRow = document.getElementById('sajuBonusRow');
+  const sajuBonusLabel = document.getElementById('sajuBonusLabel');
 
   unknownTimeEl.addEventListener('change', () => {
     birthTimeEl.disabled = unknownTimeEl.checked;
@@ -756,6 +771,7 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
         body: JSON.stringify({
           birthDate: birthDateEl.value,
           birthTime: unknownTimeEl.checked ? null : (birthTimeEl.value || null),
+          gender: genderEl.value || null,
         }),
       });
       const data = await res.json();
@@ -766,6 +782,10 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
       sajuResult.style.display = 'block';
       sajuAnalysisEl.textContent = data.analysis;
       sajuBallRow.innerHTML = '';
+      sajuBonusLabel.style.display = '';
+      const oldBonusBall = sajuBonusRow.querySelector('.ball');
+      if (oldBonusBall) oldBonusBall.remove();
+
       const els = data.numbers.map(() => {
         const el = document.createElement('div');
         el.className = 'ball';
@@ -779,6 +799,15 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
         await rollBall(els[i], data.numbers[i], 480 + i * 70, 'ai');
         await sleep(70);
       }
+
+      sajuHint.textContent = '보너스 번호를 불러오는 중…';
+      sajuBonusLabel.style.display = 'none';
+      const bonusEl = document.createElement('div');
+      bonusEl.className = 'ball ai bonus-ball';
+      bonusEl.textContent = '?';
+      sajuBonusRow.appendChild(bonusEl);
+      await rollBall(bonusEl, data.bonus, 550, 'ai');
+      bonusEl.classList.add('bonus-ball');
 
       sajuHint.classList.remove('live');
       sajuHint.textContent = '사주 분석을 바탕으로 추천된 번호입니다';

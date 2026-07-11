@@ -1,19 +1,49 @@
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = 'gpt-5.4-mini';
 
-function pickUniqueNumbers(candidates) {
-  const valid = Array.from(
-    new Set(
-      (candidates || [])
-        .map((n) => Number(n))
-        .filter((n) => Number.isInteger(n) && n >= 1 && n <= 45)
-    )
-  );
-  while (valid.length < 6) {
+function pickNumbers(mainCandidates, bonusCandidate) {
+  const pool = [];
+  const pushValid = (n) => {
+    n = Number(n);
+    if (Number.isInteger(n) && n >= 1 && n <= 45 && !pool.includes(n)) pool.push(n);
+  };
+  (mainCandidates || []).forEach(pushValid);
+
+  const bonusNum = Number(bonusCandidate);
+  const bonusValid = Number.isInteger(bonusNum) && bonusNum >= 1 && bonusNum <= 45;
+  if (bonusValid) pushValid(bonusNum);
+
+  while (pool.length < 7) {
     const n = 1 + Math.floor(Math.random() * 45);
-    if (!valid.includes(n)) valid.push(n);
+    if (!pool.includes(n)) pool.push(n);
   }
-  return valid.slice(0, 6).sort((a, b) => a - b);
+
+  const sevenNums = pool.slice(0, 7);
+  const bonus = bonusValid && sevenNums.includes(bonusNum) ? bonusNum : sevenNums[sevenNums.length - 1];
+  const main = sevenNums.filter((n) => n !== bonus).sort((a, b) => a - b);
+
+  return { main, bonus };
+}
+
+async function saveToSupabase(record) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return;
+
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/saju_draws`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify([record]),
+    });
+  } catch (err) {
+    console.error('Supabase insert failed:', err);
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -22,7 +52,7 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  const { birthDate, birthTime } = req.body || {};
+  const { birthDate, birthTime, gender } = req.body || {};
 
   if (!birthDate || typeof birthDate !== 'string') {
     res.status(400).json({ error: '생년월일을 입력해주세요.' });
@@ -36,14 +66,17 @@ module.exports = async function handler(req, res) {
   }
 
   const timeText = birthTime ? `${birthTime}` : '모름 (시주 제외하고 분석)';
+  const genderText = gender ? gender : '선택 안 함';
 
   const systemPrompt =
-    '너는 사주(네 기둥) 명리학에 정통한 분석가다. 사용자의 생년월일과 태어난 시간을 바탕으로 사주를 간단히 풀이하고, ' +
-    '그 풀이에서 느껴지는 기운/오행/숫자 인상을 근거로 1부터 45 사이의 서로 다른 정수 6개를 로또 번호로 추천한다. ' +
+    '너는 사주(네 기둥) 명리학에 정통한 분석가다. 사용자의 생년월일, 태어난 시간, 성별을 바탕으로 사주를 간단히 풀이하고, ' +
+    '그 풀이에서 느껴지는 기운/오행/숫자 인상을 근거로 1부터 45 사이의 서로 다른 정수 7개(메인 번호 6개 + 보너스 번호 1개)를 로또 번호로 추천한다. ' +
     '반드시 아래 JSON 형식으로만 답한다. 다른 텍스트는 포함하지 않는다.\n' +
-    '{"analysis": "3~5문장의 한국어 사주 풀이", "numbers": [6개의 1~45 사이 서로 다른 정수]}';
+    '{"analysis": "3~5문장의 한국어 사주 풀이", "numbers": [6개의 1~45 사이 서로 다른 정수], "bonusNumber": 1~45 사이 정수 (numbers와 겹치지 않음)}';
 
-  const userPrompt = `생년월일: ${birthDate}\n태어난 시간: ${timeText}\n이 정보로 사주를 풀이하고 로또 번호 6개를 추천해줘.`;
+  const userPrompt =
+    `생년월일: ${birthDate}\n태어난 시간: ${timeText}\n성별: ${genderText}\n` +
+    '이 정보로 사주를 풀이하고 메인 로또 번호 6개와 보너스 번호 1개를 추천해줘.';
 
   try {
     const completion = await fetch(OPENAI_URL, {
@@ -79,13 +112,22 @@ module.exports = async function handler(req, res) {
       parsed = {};
     }
 
-    const numbers = pickUniqueNumbers(parsed.numbers);
+    const { main, bonus } = pickNumbers(parsed.numbers, parsed.bonusNumber);
     const analysis =
       typeof parsed.analysis === 'string' && parsed.analysis.trim()
         ? parsed.analysis.trim()
         : '사주 풀이 결과를 가져오지 못해 대신 번호를 추천했습니다.';
 
-    res.status(200).json({ analysis, numbers });
+    await saveToSupabase({
+      birth_date: birthDate,
+      birth_time: birthTime || null,
+      gender: gender || null,
+      analysis,
+      numbers: main,
+      bonus_number: bonus,
+    });
+
+    res.status(200).json({ analysis, numbers: main, bonus });
   } catch (err) {
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });
   }
