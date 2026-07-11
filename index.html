@@ -266,6 +266,7 @@ body {
 .b3 { background: radial-gradient(circle at 32% 28%, #ef8267, var(--ball-3)); color: var(--ball-3-ink); }
 .b4 { background: radial-gradient(circle at 32% 28%, #a6a89c, var(--ball-4)); color: var(--ball-4-ink); }
 .b5 { background: radial-gradient(circle at 32% 28%, #7dc27f, var(--ball-5)); color: var(--ball-5-ink); }
+.ai { background: radial-gradient(circle at 32% 28%, #6fe08a, #1c703a); color: #f2fff3; }
 
 .controls {
   display: flex;
@@ -383,6 +384,105 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
   font-weight: 600;
   letter-spacing: 0.04em;
 }
+
+.saju-section {
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+.saju-head {
+  text-align: center;
+  margin-bottom: 22px;
+}
+.saju-head h2 {
+  font-size: 22px;
+  font-weight: 400;
+  margin: 0 0 6px;
+  text-wrap: balance;
+}
+.saju-head p {
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.saju-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.field-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.field input[type="date"],
+.field input[type="time"] {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+}
+.field input:disabled {
+  opacity: 0.5;
+}
+.unknown-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.saju-hint {
+  text-align: center;
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: var(--ink-soft);
+  min-height: 18px;
+  margin-top: 6px;
+  transition: color 0.15s ease;
+}
+.saju-hint.live {
+  color: var(--gold);
+  font-weight: 600;
+}
+.saju-hint.error {
+  color: #d1594a;
+}
+
+.saju-result {
+  margin-top: 22px;
+}
+.saju-analysis {
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--bg-2);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 0 0 20px;
+  white-space: pre-line;
+}
+.ai-row {
+  min-height: 92px;
+}
 </style>
 
 <div class="stage">
@@ -417,6 +517,37 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
   <div class="history" id="historyBlock" style="display:none;">
     <h2>지난 추첨</h2>
     <ol id="historyList"></ol>
+  </div>
+
+  <div class="saju-section">
+    <div class="saju-head">
+      <h2>사주로 번호 추천받기</h2>
+      <p>생년월일과 태어난 시간을 입력하면 AI가 사주를 풀이해 번호를 추천합니다</p>
+    </div>
+
+    <form class="saju-form" id="sajuForm">
+      <div class="field-row">
+        <div class="field">
+          <label for="birthDate">생년월일</label>
+          <input type="date" id="birthDate" required />
+        </div>
+        <div class="field">
+          <label for="birthTime">태어난 시간</label>
+          <input type="time" id="birthTime" />
+        </div>
+      </div>
+      <label class="unknown-time">
+        <input type="checkbox" id="unknownTime" /> 태어난 시간을 몰라요
+      </label>
+      <button type="submit" class="draw" id="sajuBtn">사주 분석하고 번호 추천받기</button>
+    </form>
+
+    <div class="saju-hint" id="sajuHint"></div>
+
+    <div class="saju-result" id="sajuResult" style="display:none;">
+      <p class="saju-analysis" id="sajuAnalysis"></p>
+      <div class="main-row ai-row" id="sajuBallRow"></div>
+    </div>
   </div>
 </div>
 
@@ -464,7 +595,7 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
     return el;
   }
 
-  async function rollBall(el, finalNum, rollDuration) {
+  async function rollBall(el, finalNum, rollDuration, finalClass) {
     el.classList.add('enter');
     await sleep(160);
     el.classList.add('rolling');
@@ -481,7 +612,7 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
     el.classList.remove('rolling');
     el.textContent = finalNum;
     el.className = el.className.replace('rolling', '').trim();
-    el.classList.add(colorClass(finalNum), 'lock');
+    el.classList.add(finalClass || colorClass(finalNum), 'lock');
   }
 
   function flashBurst() {
@@ -512,7 +643,7 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
 
     for (let i = 0; i < mainEls.length; i++) {
       const dur = 550 + i * 90;
-      await rollBall(mainEls[i], result.main[i], dur);
+      await rollBall(mainEls[i], result.main[i], dur, colorClass(result.main[i]));
       flashBurst();
       await sleep(90);
     }
@@ -520,7 +651,7 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
     tableEl.classList.remove('shaking');
     hint.textContent = '보너스 번호 추첨 중…';
     await sleep(150);
-    await rollBall(bonusEl, result.bonus, 700);
+    await rollBall(bonusEl, result.bonus, 700, colorClass(result.bonus));
     bonusEl.classList.add('bonus-ball');
     flashBurst();
 
@@ -573,6 +704,83 @@ button.draw:disabled { opacity: 0.55; cursor: default; transform: none; }
 
     drawBtn.disabled = false;
     busy = false;
+  });
+
+  const sajuForm = document.getElementById('sajuForm');
+  const birthDateEl = document.getElementById('birthDate');
+  const birthTimeEl = document.getElementById('birthTime');
+  const unknownTimeEl = document.getElementById('unknownTime');
+  const sajuBtn = document.getElementById('sajuBtn');
+  const sajuHint = document.getElementById('sajuHint');
+  const sajuResult = document.getElementById('sajuResult');
+  const sajuAnalysisEl = document.getElementById('sajuAnalysis');
+  const sajuBallRow = document.getElementById('sajuBallRow');
+
+  unknownTimeEl.addEventListener('change', () => {
+    birthTimeEl.disabled = unknownTimeEl.checked;
+    if (unknownTimeEl.checked) birthTimeEl.value = '';
+  });
+
+  let sajuBusy = false;
+
+  sajuForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (sajuBusy) return;
+    if (!birthDateEl.value) {
+      sajuHint.classList.remove('live');
+      sajuHint.classList.add('error');
+      sajuHint.textContent = '생년월일을 입력해주세요.';
+      return;
+    }
+
+    sajuBusy = true;
+    sajuBtn.disabled = true;
+    sajuHint.classList.remove('error');
+    sajuHint.classList.add('live');
+    sajuHint.textContent = '사주를 풀이하는 중…';
+    sajuResult.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/saju', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          birthDate: birthDateEl.value,
+          birthTime: unknownTimeEl.checked ? null : (birthTimeEl.value || null),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '분석에 실패했습니다.');
+      }
+
+      sajuResult.style.display = 'block';
+      sajuAnalysisEl.textContent = data.analysis;
+      sajuBallRow.innerHTML = '';
+      const els = data.numbers.map(() => {
+        const el = document.createElement('div');
+        el.className = 'ball';
+        el.textContent = '?';
+        sajuBallRow.appendChild(el);
+        return el;
+      });
+
+      sajuHint.textContent = '번호를 불러오는 중…';
+      for (let i = 0; i < els.length; i++) {
+        await rollBall(els[i], data.numbers[i], 480 + i * 70, 'ai');
+        await sleep(70);
+      }
+
+      sajuHint.classList.remove('live');
+      sajuHint.textContent = '사주 분석을 바탕으로 추천된 번호입니다';
+    } catch (err) {
+      sajuHint.classList.remove('live');
+      sajuHint.classList.add('error');
+      sajuHint.textContent = err.message || '오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+    } finally {
+      sajuBtn.disabled = false;
+      sajuBusy = false;
+    }
   });
 })();
 </script>
